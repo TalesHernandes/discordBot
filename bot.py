@@ -10,27 +10,25 @@ intents.message_content = True
 
 # Crie uma instância do bot
 bot = commands.Bot(command_prefix='!!', intents=intents)
-global music_playing
 voice_channels = {}
 music_queues = {}
 ydl_opts_flat = {
     'extract_flat': True,
 }
 global music_playing
-music_playing = {}
 global loop_status
-loop_status = {}
 
 
 @bot.event
 async def on_ready():
-    await bot.loop.create_task(cleanup_downloads())
     print('Bot está pronto para ser utilizado!')
+    await bot.loop.create_task(cleanup_downloads())
 
 
 @bot.command(name='loop')
 async def loop(ctx):
     global loop_status
+    loop_status = {}
 
     guild_id = ctx.guild.id
 
@@ -103,6 +101,7 @@ async def play_music(ctx):
     global voice_channels
     global music_queues
     global music_playing
+    music_playing = {}
     global loop_status
 
     guild_id = ctx.guild.id
@@ -131,24 +130,14 @@ async def play_music(ctx):
 
         # Baixe o áudio do vídeo do YouTube
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
+            ydl.extract_info(url, download=True)
             print("ESSA MERDA PASSA AQUI 3?")
 
         # Reproduza o áudio baixado
         voice_channels[guild_id].play(discord.FFmpegPCMAudio(executable="ffmpeg", source=f'downloads/{song_title}.mp3'))
 
         # Enviar uma mensagem com o nome da música
-        with yt_dlp.YoutubeDL(ydl_opts_flat) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
-            song_title = info_dict.get('title', None)
-        if len(music_queues[guild_id]) > 0:
-            with yt_dlp.YoutubeDL(ydl_opts_flat) as ydl:
-                next_info_dict = ydl.extract_info(music_queues[guild_id][0], download=False)
-                next_title = next_info_dict.get('title', None)
-            await ctx.send(f'Tocando: `{song_title}`\nDuração: `{song_duration}` segundos\nPróxima música: '
-                           f'`{next_title}`')
-        else:
-            await ctx.send(f'Tocando: `{song_title}`\nDuração: `{song_duration}` segundos.')
+        await ctx.send(f'Tocando: `{music_playing}`\nDuração: `{song_duration}` segundos.')
 
         # Aguarde até que o áudio termine de tocar, depois desconecte
         while voice_channels[guild_id].is_playing():
@@ -166,7 +155,10 @@ async def play_music(ctx):
 
     if len(music_queues[guild_id]) == 0:
         await asyncio.sleep(120)
-        await voice_channels[guild_id].disconnect()
+        if guild_id in voice_channels and voice_channels[guild_id].is_playing():
+            return
+        else:
+            await voice_channels[guild_id].disconnect()
 
 
 @bot.command(name='stop')
