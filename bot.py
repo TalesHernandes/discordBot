@@ -9,24 +9,52 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 # Crie uma instância do bot
-bot = commands.Bot(command_prefix='!', intents=intents)
+bot = commands.Bot(command_prefix='!!', intents=intents)
 global music_playing
-voice_channel = None
-music_queue = []
+voice_channels = {}
+music_queues = {}
 ydl_opts_flat = {
     'extract_flat': True,
 }
+global music_playing
+music_playing = {}
+global loop_status
+loop_status = {}
 
 
 @bot.event
 async def on_ready():
+    await bot.loop.create_task(cleanup_downloads())
     print('Bot está pronto para ser utilizado!')
 
 
-@bot.command(name='playYT')
+@bot.command(name='loop')
+async def loop(ctx):
+    global loop_status
+
+    guild_id = ctx.guild.id
+
+    # Verifique se o modo de loop já está ativado para este servidor
+    if guild_id in loop_status and loop_status[guild_id]:
+        # Se o modo de loop estiver ativado, desative-o
+        loop_status[guild_id] = False
+        await ctx.send('Modo de loop desativado.')
+    else:
+        # Se o modo de loop estiver desativado, ative-o
+        loop_status[guild_id] = True
+        await ctx.send('Modo de loop ativado.')
+
+
+@bot.command(name='play')
 async def play(ctx, *, query):
-    global voice_channel
-    global music_queue
+    global voice_channels
+    global music_queues
+
+    guild_id = ctx.guild.id
+
+    # Verifique se a fila de música para o servidor atual existe, se não, crie uma
+    if guild_id not in music_queues:
+        music_queues[guild_id] = []
 
     # Verifique se a consulta é uma URL
     if not query.startswith('http'):
@@ -43,10 +71,10 @@ async def play(ctx, *, query):
         with yt_dlp.YoutubeDL(ydl_opts_flat) as ydl:
             info = ydl.extract_info(url, download=False)
             for entry in info['entries']:
-                music_queue.append(entry['id'])
+                music_queues[guild_id].append(entry['id'])
     else:
         # Se não for uma playlist, adicione a música à fila
-        if voice_channel is not None and voice_channel.is_playing():
+        if guild_id in voice_channels and voice_channels[guild_id].is_playing():
             with yt_dlp.YoutubeDL(ydl_opts_flat) as ydl:
                 info = ydl.extract_info(url, download=False)
                 song_title = info.get('title', None)
@@ -54,27 +82,33 @@ async def play(ctx, *, query):
 
             await ctx.send(f'Música adicionada: `{song_title}`\nDuração: `{song_duration}` segundos')
 
-        music_queue.append(url)
+        if guild_id not in music_queues:
+            music_queues[guild_id] = []
+        music_queues[guild_id].append(url)
 
     # Se uma música já estiver tocando, não faça mais nada
-    if voice_channel is not None and voice_channel.is_playing():
+    if guild_id in voice_channels and voice_channels[guild_id].is_playing():
         return
 
     # Conecte-se ao canal de voz do usuário
     channel = ctx.message.author.voice.channel
-    if voice_channel is None or not voice_channel.is_connected():
-        voice_channel = await channel.connect()
+    if guild_id not in voice_channels or (guild_id in voice_channels and not voice_channels[guild_id].is_connected()):
+        voice_channels[guild_id] = await channel.connect()
 
     # Comece a tocar as músicas na fila
     await play_music(ctx)
 
 
 async def play_music(ctx):
-    global voice_channel
-    global music_queue
+    global voice_channels
+    global music_queues
+    global music_playing
+    global loop_status
 
-    while len(music_queue) > 0:
-        url = music_queue.pop(0)
+    guild_id = ctx.guild.id
+
+    while len(music_queues[guild_id]) > 0:
+        url = music_queues[guild_id].pop(0)
 
         with yt_dlp.YoutubeDL(ydl_opts_flat) as ydl:
             info_dict = ydl.extract_info(url, download=False)
@@ -101,15 +135,15 @@ async def play_music(ctx):
             print("ESSA MERDA PASSA AQUI 3?")
 
         # Reproduza o áudio baixado
-        voice_channel.play(discord.FFmpegPCMAudio(executable="ffmpeg", source=f'downloads/{song_title}.mp3'))
+        voice_channels[guild_id].play(discord.FFmpegPCMAudio(executable="ffmpeg", source=f'downloads/{song_title}.mp3'))
 
         # Enviar uma mensagem com o nome da música
         with yt_dlp.YoutubeDL(ydl_opts_flat) as ydl:
             info_dict = ydl.extract_info(url, download=False)
             song_title = info_dict.get('title', None)
-        if len(music_queue) > 0:
+        if len(music_queues[guild_id]) > 0:
             with yt_dlp.YoutubeDL(ydl_opts_flat) as ydl:
-                next_info_dict = ydl.extract_info(music_queue[0], download=False)
+                next_info_dict = ydl.extract_info(music_queues[guild_id][0], download=False)
                 next_title = next_info_dict.get('title', None)
             await ctx.send(f'Tocando: `{song_title}`\nDuração: `{song_duration}` segundos\nPróxima música: '
                            f'`{next_title}`')
@@ -117,46 +151,72 @@ async def play_music(ctx):
             await ctx.send(f'Tocando: `{song_title}`\nDuração: `{song_duration}` segundos.')
 
         # Aguarde até que o áudio termine de tocar, depois desconecte
-        while voice_channel.is_playing():
+        while voice_channels[guild_id].is_playing():
             await asyncio.sleep(1)
+
+        while guild_id in loop_status and loop_status[guild_id]:
+            voice_channels[guild_id].play(
+                discord.FFmpegPCMAudio(executable="ffmpeg", source=f'downloads/{music_playing}.mp3'))
+            while voice_channels[guild_id].is_playing():
+                await asyncio.sleep(1)
 
         # Remova o arquivo de áudio
         if os.path.exists(f'downloads/{song_title}.mp3'):
             os.remove(f'downloads/{song_title}.mp3')
 
-    if len(music_queue) == 0:
+    if len(music_queues[guild_id]) == 0:
         await asyncio.sleep(120)
-        await voice_channel.disconnect()
+        await voice_channels[guild_id].disconnect()
 
 
-@bot.command(name='stopYT')
+@bot.command(name='stop')
 async def stop(ctx):
-    global voice_channel
-    global music_queue
+    global voice_channels
+    global music_queues
+
+    guild_id = ctx.guild.id
+
+    if guild_id in voice_channels:
+        voice_channels[guild_id].stop()
+        await voice_channels[guild_id].disconnect()
+        del voice_channels[guild_id]
+        music_queues[guild_id].clear()
 
     if os.path.exists(f'downloads/{music_playing}.mp3'):
         os.remove(f'downloads/{music_playing}.mp3')
 
-    if voice_channel is not None:
-        voice_channel.stop()
-        await voice_channel.disconnect()
-        voice_channel = None
-        music_queue.clear()
 
-
-@bot.command(name='skipYT')
+@bot.command(name='skip')
 async def skip(ctx):
-    global voice_channel
-    global music_queue
+    global voice_channels
+    global music_queues
 
-    if voice_channel is not None:
+    guild_id = ctx.guild.id
+
+    if guild_id in voice_channels:
         # Pare a música atual
-        voice_channel.stop()
+        voice_channels[guild_id].stop()
 
         # Se não houver mais músicas na fila, pare a reprodução
-        if len(music_queue) == 0:
+        if len(music_queues[guild_id]) == 0:
             await stop(ctx)
 
+
+async def cleanup_downloads():
+    while True:
+        # Aguarde 5 minutos
+        await asyncio.sleep(300)
+
+        # Obtenha uma lista de todas as músicas atualmente tocando
+        currently_playing = [f'downloads/{song}.mp3' for song in music_playing.values()]
+
+        # Obtenha uma lista de todos os arquivos na pasta de downloads
+        downloads = os.listdir('downloads')
+
+        for file in downloads:
+            # Se o arquivo não estiver sendo reproduzido atualmente, exclua-o
+            if file not in currently_playing:
+                os.remove(f'downloads/{file}')
 
 # Inicie o bot
 bot.run('MTE5NTIwMzI2NTQ1Mzg5MTYyNQ.GhXhLD.v7aqRhijHlQwj7-txefWvuTCM3yWfY8OBIRfAQ')
