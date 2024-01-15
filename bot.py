@@ -100,6 +100,7 @@ async def play(ctx, *, query):
     print("Iniciando fila de músicas")
     await play_music(ctx)
 
+
 async def play_music(ctx):
     inicio = time.time()
     global voice_channels
@@ -249,15 +250,20 @@ async def cleanup_downloads():
         await asyncio.sleep(300)
 
         # Obtenha uma lista de todas as músicas atualmente tocando
-        currently_playing = f'downloads/{music_playing}.mp3'
+        try:
+            currently_playing = f'downloads/{music_playing}.mp3'
+        except NameError as e:
+            currently_playing = None
+            print(e)
 
         # Obtenha uma lista de todos os arquivos na pasta de downloads
         downloads = os.listdir('downloads')
 
-        for file in downloads:
-            # Se o arquivo não estiver sendo reproduzido atualmente, exclua-o
-            if file not in currently_playing:
-                os.remove(f'downloads/{file}')
+        if currently_playing is not None:
+            for file in downloads:
+                # Se o arquivo não estiver sendo reproduzido atualmente, exclua-o
+                if file not in currently_playing:
+                    os.remove(f'downloads/{file}')
 
 # Inicie o bot
 bot.run('MTE5NTIwMzI2NTQ1Mzg5MTYyNQ.GhXhLD.v7aqRhijHlQwj7-txefWvuTCM3yWfY8OBIRfAQ')
