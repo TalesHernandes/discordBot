@@ -119,8 +119,11 @@ async def play_music(ctx):
             info_dict = ydl.extract_info(url, download=False)
             song_title = info_dict.get('title', None)
             song_name_discord_msg = song_title
-            song_title = re.sub('[^A-Za-z0-9 ]+', '', song_title)
-            song_title = song_title.replace(' ', '_')
+            try:
+                song_title = re.sub('[^A-Za-z0-9 ]+', '', song_title)
+                song_title = song_title.replace(' ', '_')
+            except TypeError as e:
+                print(e)
             music_playing = song_title
             song_duration = info_dict.get('duration', None)
             print("Busca finalizada")
