@@ -4,6 +4,7 @@ from discord.ext import commands
 import yt_dlp
 import os
 import re
+import time
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -99,8 +100,8 @@ async def play(ctx, *, query):
     print("Iniciando fila de músicas")
     await play_music(ctx)
 
-
 async def play_music(ctx):
+    inicio = time.time()
     global voice_channels
     global music_queues
     global music_playing
@@ -148,6 +149,10 @@ async def play_music(ctx):
         # Reproduza o áudio baixado
         print("Iniciando toque da música...")
         voice_channels[guild_id].play(discord.FFmpegPCMAudio(executable="ffmpeg", source=f'downloads/{song_title}.mp3'))
+        fim = time.time()
+        tempo_total = fim - inicio
+
+        print(f"Tempo de execução: {tempo_total} segundos")
         print("Tocando a música")
 
         # Enviar uma mensagem com o nome da música
