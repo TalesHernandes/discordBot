@@ -166,6 +166,8 @@ async def play_music(ctx):
         except NameError as e:
             # Não sei resolver isso sem colocar 'loop_status = {}' no começo do código
             print(e)
+        finally:
+            loop_status = {guild_id: False}
 
         # Remova o arquivo de áudio
         if os.path.exists(f'downloads/{song_title}.mp3'):
