@@ -266,4 +266,4 @@ async def cleanup_downloads():
                     os.remove(f'downloads/{file}')
 
 # Inicie o bot
-bot.run('MTE5NTIwMzI2NTQ1Mzg5MTYyNQ.GhXhLD.v7aqRhijHlQwj7-txefWvuTCM3yWfY8OBIRfAQ')
+bot.run('TOKEN')
